@@ -1024,7 +1024,8 @@ function buildDemoReport(demo) {
     forts: buildForts({ note: note, occupation: occupation, bedrooms: chambres }, variation),
     faibles: buildFaibles({ avis: avis }, variation),
     historique: buildHistorique(demo.prix),
-    comps: estimatedComps(demo.prix)
+    comps: estimatedComps(demo.prix),
+    source: 'demo'
   };
 }
 
@@ -1096,12 +1097,12 @@ function renderReport(d) {
   var badges = document.createElement('div');
   badges.className = 'prop-badges';
   var badgeContent = '<div class="pb pb-white">Airbnb</div><div class="pb pb-sun">☀️ StayOh!</div>';
-  if (d.isEstimation) {
-    badgeContent += '<div class="pb" style="background:#FEF9C3;color:#A16207">~Estimation marché</div>';
-  } else if (d.source === 'apify') {
-    badgeContent += '<div class="pb" style="background:#EDE9FE;color:#7C3AED">⚡ Apify Live</div>';
-  } else if (d.source === 'airroi') {
-    badgeContent += '<div class="pb" style="background:#DCFCE7;color:#16A34A">✅ AirROI Live</div>';
+  if (d.source === 'demo') {
+    badgeContent += '<div class="pb" style="background:#F0F9FF;color:#0369A1">🎭 Simulation démo</div>';
+  } else if (d.source === 'fallback' || d.isEstimation) {
+    badgeContent += '<div class="pb" style="background:#FEF9C3;color:#A16207">〜 Estimation marché</div>';
+  } else if (d.source === 'apify' || d.source === 'airroi') {
+    badgeContent += '<div class="pb" style="background:#DCFCE7;color:#16A34A">✅ Données réelles</div>';
   }
   badges.innerHTML = badgeContent;
   photo.appendChild(badges);
@@ -1133,10 +1134,15 @@ function renderReport(d) {
              : 'Dans la moyenne du marché';
   var scoreLbl = d.score >= 80 ? 'Bonne affaire' : d.score >= 60 ? 'Prix correct' : d.score >= 45 ? 'Légèrement surévalué' : 'Trop cher';
   var em2 = d.cls === 'good' ? '🎉' : d.cls === 'bad' ? '🚨' : '〰️';
+  var sourceTag = d.source === 'demo'
+    ? '<span style="font-size:.72rem;padding:2px 10px;border-radius:100px;background:rgba(255,255,255,.2);margin-left:8px;font-weight:600">🎭 Démo</span>'
+    : (d.source === 'fallback' || d.isEstimation)
+      ? '<span style="font-size:.72rem;padding:2px 10px;border-radius:100px;background:rgba(255,255,255,.2);margin-left:8px;font-weight:600">〜 Estimation</span>'
+      : '<span style="font-size:.72rem;padding:2px 10px;border-radius:100px;background:rgba(255,255,255,.2);margin-left:8px;font-weight:600">✅ Données réelles</span>';
   document.getElementById('verdictBand').innerHTML =
     '<div class="verdict-band vb-' + d.cls + '">' +
     '<div class="vb-left">' +
-    '<div class="vb-eyebr">Verdict StayOh!</div>' +
+    '<div class="vb-eyebr">Verdict StayOh!' + sourceTag + '</div>' +
     '<div class="vb-punchline h2-' + d.cls + '">' + (d.badge || em2) + ' ' + esc(d.verdict) + '</div>' +
     '<div class="vb-variation">' + (d.variation > 0 ? '+' : '') + d.variation + '% vs le marché local</div>' +
     '<div class="vb-impact">' + esc(impTxt) + '</div>' +
@@ -1366,7 +1372,8 @@ function useFallbackEstimation(url, id) {
         faibles: ["Bien non référencé dans AirROI (trop récent)", "Estimation approximative — vérifiez les avis"],
         historique: buildHistorique(prixEstime),
         comps: estimatedComps(prixEstime),
-        isEstimation: true
+        isEstimation: true,
+        source: 'fallback'
       };
       cacheSet('listing_' + id, report);
       hideLoading();
