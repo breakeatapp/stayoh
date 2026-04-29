@@ -41,10 +41,13 @@ async function handleListing(query, body) {
     });
   }
 
-  const primaryItems = await fetchApify({
-    startUrls: [{ url: listingUrl }],
-    maxItems: 8
-  });
+  let primaryItems = [];
+  try {
+    primaryItems = await fetchApify({ startUrls: [{ url: listingUrl }], maxItems: 4 });
+  } catch (e) {
+    console.warn("[airroi] Apify listing fetch failed:", e.message);
+    return json(200, { listing: null, listings: [], market: null, error: "apify_unavailable" });
+  }
 
   const primaryListings = normalizeListings(primaryItems, { fallbackUrl: listingUrl });
   let listing = pickListing(primaryListings, listingId, listingUrl);
@@ -64,18 +67,18 @@ async function handleListing(query, body) {
 
   if (!comparables.length && listing.ville) {
     const searchUrl = buildSearchUrl(listing.ville, listing.capacity || 2);
-    const marketItems = await fetchApify({
-      startUrls: [{ url: searchUrl }],
-      maxItems: 18
-    });
-
-    comparables = normalizeListings(marketItems, { fallbackUrl: searchUrl })
-      .filter(function(candidate) {
-        return hasPrice(candidate) && !isSameListing(candidate, listing);
-      });
+    try {
+      const marketItems = await fetchApify({ startUrls: [{ url: searchUrl }], maxItems: 10 });
+      comparables = normalizeListings(marketItems, { fallbackUrl: searchUrl })
+        .filter(function(candidate) {
+          return hasPrice(candidate) && !isSameListing(candidate, listing);
+        });
+    } catch (e) {
+      console.warn("[airroi] Apify comparables fetch failed:", e.message);
+    }
   }
 
-  comparables = dedupeListings(comparables).slice(0, 12);
+  comparables = dedupeListings(comparables).slice(0, 10);
 
   const market = buildMarketSummary(comparables.length ? comparables : [listing], listing.ville);
   listing = enrichListing(listing, market);
@@ -137,22 +140,33 @@ async function fetchApify(payload) {
     throw new Error("Missing APIFY_TOKEN");
   }
 
-  const response = await fetch(
-    "https://api.apify.com/v2/acts/maxcopell~airbnb-scraper/run-sync-get-dataset-items?token=" + encodeURIComponent(token),
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 9000);
+
+  try {
+    const response = await fetch(
+      "https://api.apify.com/v2/acts/maxcopell~airbnb-scraper/run-sync-get-dataset-items?token=" + encodeURIComponent(token),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      }
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error("Apify HTTP " + response.status + ": " + text.slice(0, 220));
     }
-  );
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error("Apify HTTP " + response.status + ": " + text.slice(0, 220));
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("Apify timeout (9s)");
+    throw e;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const data = await response.json();
-  return Array.isArray(data) ? data : [];
 }
 
 function normalizeListings(items, options) {

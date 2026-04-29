@@ -778,23 +778,24 @@ function startAnalysis() {
     return fetch('/.netlify/functions/airroi?action=listing&id=' + encodeURIComponent(listingId));
   })
   .then(function(res) {
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return res.json();
-  })
-  .then(function(data) {
-    console.log('[StayOh!] listing response:', JSON.stringify(data).slice(0, 200));
-    if (!data || !data.listing) {
+    if (!res.ok) {
+      console.warn('[StayOh!] Function HTTP ' + res.status + ' → fallback estimation');
       return useFallbackEstimation(url, listingId);
     }
-    var report = buildAirROIReport(data, url);
-    cacheSet('listing_' + listingId, report);
-    hideLoading();
-    runWithData(report);
+    return res.json().then(function(data) {
+      console.log('[StayOh!] listing response:', JSON.stringify(data).slice(0, 200));
+      if (!data || !data.listing) {
+        return useFallbackEstimation(url, listingId);
+      }
+      var report = buildAirROIReport(data, url);
+      cacheSet('listing_' + listingId, report);
+      hideLoading();
+      runWithData(report);
+    });
   })
   .catch(function(err) {
-    console.error('[StayOh!] Listing error:', err);
-    hideLoading();
-    showError("Impossible d'analyser ce lien pour le moment. Réessayez dans quelques instants.");
+    console.warn('[StayOh!] Listing error → fallback:', err.message);
+    useFallbackEstimation(url, listingId);
   });
 }
 
