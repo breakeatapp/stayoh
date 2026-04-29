@@ -764,25 +764,29 @@ function startAnalysis() {
     return;
   }
 
-  showLoading();
-  listingId = extractAirbnbId(url) || ('manual_' + Date.now());
+  listingId = extractAirbnbId(url);
+  if (!listingId) {
+    showError("Lien non reconnu. Collez un lien Airbnb valide (ex: airbnb.fr/rooms/12345).");
+    return;
+  }
 
-  fetch('/.netlify/functions/airroi', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: url })
+  var cached = cacheGet('listing_' + listingId);
+  if (cached) { runWithData(cached); return; }
+
+  showLoading();
+  animSteps().then(function() {
+    return fetch('/.netlify/functions/airroi?action=listing&id=' + encodeURIComponent(listingId));
   })
   .then(function(res) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
   })
   .then(function(data) {
-    var report;
     console.log('[StayOh!] listing response:', JSON.stringify(data).slice(0, 200));
     if (!data || !data.listing) {
       return useFallbackEstimation(url, listingId);
     }
-    report = buildAirROIReport(data, url);
+    var report = buildAirROIReport(data, url);
     cacheSet('listing_' + listingId, report);
     hideLoading();
     runWithData(report);
@@ -921,7 +925,27 @@ function buildAirROIReport(data, originalUrl) {
     variation = Math.round(((prix - mediane) / mediane) * 100);
   }
   variation = Math.round(variation || 0);
-  scored = premiumScore(prix, variation, note, avis, occupation, mkt);
+
+  if (data.score_total != null && data.verdict) {
+    var VERDICT_MAP = {
+      'Bonne affaire': { badge: '🔥', cls: 'good', resume: 'Ce bien est sous-évalué par rapport au marché local.' },
+      'Pépite cachée': { badge: '💎', cls: 'good', resume: 'Prix bas, excellente note et forte demande. Rarissime.' },
+      'Prix correct':  { badge: '✅', cls: 'fair', resume: 'Prix cohérent avec le marché local.' },
+      'Surévalué':     { badge: '⚠️', cls: 'bad',  resume: 'Ce bien est au-dessus du marché local.' },
+      'À surveiller':  { badge: '⚠️', cls: 'fair', resume: 'Comparez avec les biens similaires du quartier.' }
+    };
+    var vm = VERDICT_MAP[data.verdict] || { badge: '〰️', cls: 'fair', resume: '' };
+    scored = {
+      score: data.score_total,
+      label: data.verdict,
+      badge: vm.badge,
+      cls: vm.cls,
+      resume: vm.resume,
+      reco: data.insight || vm.resume
+    };
+  } else {
+    scored = premiumScore(prix, variation, note, avis, occupation, mkt);
+  }
 
   var realComps = comps.filter(function(c) { return c && (c.prix || c.price || 0) > 0; })
     .map(function(c, i) {
@@ -971,7 +995,7 @@ function buildAirROIReport(data, originalUrl) {
     faibles:   buildFaibles({ avis: avis }, variation),
     historique: buildHistorique(prix || mediane || 85),
     comps:     realComps,
-    source:    'airroi'
+    source:    data.source || 'airroi'
   };
 }
 
