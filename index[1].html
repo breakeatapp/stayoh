@@ -993,7 +993,7 @@ function buildAirROIReport(data, originalUrl) {
     reco:      scored.reco,
     forts:     buildForts({ note: note, occupation: occupation, bedrooms: chambres }, variation),
     faibles:   buildFaibles({ avis: avis }, variation),
-    historique: buildHistorique(prix || mediane || 85),
+    historique: data.score_total != null ? [] : buildHistorique(prix || mediane || 85),
     comps:     realComps,
     source:    data.source || 'airroi'
   };
@@ -1162,29 +1162,32 @@ function renderReport(d) {
     d.faibles.map(function(f) { return '<li class="pc-item"><div class="pci-dot" style="background:var(--coral)"></div>' + esc(f) + '</li>'; }).join('') +
     '</ul></div>';
 
-  var max = Math.max.apply(null, d.historique.map(function(x) { return x.p; }));
-  var cur = new Date().getMonth();
-  document.getElementById('chartCard').innerHTML =
-    '<div class="chart-head"><div><div class="ct">Historique des prix — 12 mois</div>' +
-    '<div class="cs">Saisonnalité · ' + esc(d.quartier || city || 'Marseille') + '</div></div>' +
-    '<div class="cl"><div class="cli"><div class="cld" style="background:var(--sand-3)"></div>Marché</div>' +
-    '<div class="cli"><div class="cld" style="background:var(--teal)"></div>Ce bien</div></div></div>' +
-    '<div class="bars-wrap">' + d.historique.map(function(x, i) {
-      var hm = Math.round((x.p / max) * 100);
-      var isCur = (i === cur);
-      return '<div class="bw"><div style="display:flex;align-items:flex-end;gap:2px;height:100px">' +
-        '<div class="bar mkt" style="height:' + Math.round(hm * 0.83) + 'px;flex:1"></div>' +
-        '<div class="bar ' + (isCur ? 'cur' : 'mine') + '" style="height:' + hm + 'px;flex:1"></div>' +
-        '</div><div class="bl">' + x.m + '</div></div>';
-    }).join('') + '</div>';
+  if (!d.historique || !d.historique.length) {
+    document.getElementById('chartCard').innerHTML =
+      '<div style="padding:32px 24px;text-align:center;color:var(--muted);font-size:.88rem;font-weight:600">' +
+      '📊 Historique de prix non disponible pour ce bien.</div>';
+  } else {
+    var max = Math.max.apply(null, d.historique.map(function(x) { return x.p; }));
+    var cur = new Date().getMonth();
+    document.getElementById('chartCard').innerHTML =
+      '<div class="chart-head"><div><div class="ct">Historique des prix — 12 mois</div>' +
+      '<div class="cs">Saisonnalité · ' + esc(d.quartier || city || 'Marseille') + '</div></div>' +
+      '<div class="cl"><div class="cli"><div class="cld" style="background:var(--sand-3)"></div>Marché</div>' +
+      '<div class="cli"><div class="cld" style="background:var(--teal)"></div>Ce bien</div></div></div>' +
+      '<div class="bars-wrap">' + d.historique.map(function(x, i) {
+        var hm = Math.round((x.p / max) * 100);
+        var isCur = (i === cur);
+        return '<div class="bw"><div style="display:flex;align-items:flex-end;gap:2px;height:100px">' +
+          '<div class="bar mkt" style="height:' + Math.round(hm * 0.83) + 'px;flex:1"></div>' +
+          '<div class="bar ' + (isCur ? 'cur' : 'mine') + '" style="height:' + hm + 'px;flex:1"></div>' +
+          '</div><div class="bl">' + x.m + '</div></div>';
+      }).join('') + '</div>';
+  }
 
   var allCards = [{ nom: d.nom, prix: d.prix, note: d.note, dist: '— Votre bien', isThis: true, photo: d.photo, url: d.url, bg: d.bg }];
   d.comps.forEach(function(c) {
     allCards.push({ nom: c.nom, prix: c.prix, note: c.note, dist: c.dist, isThis: false, photo: c.photo, url: c.url, bg: c.bg, estimated: c.estimated });
   });
-  while (allCards.length < 4) {
-    allCards.push({ nom: 'Logement similaire', prix: Math.round(d.prix * (0.85 + Math.random() * 0.3)), note: '4.' + (4 + Math.floor(Math.random() * 5)), dist: Math.round(300 + Math.random() * 400) + 'm', isThis: false, photo: null, url: null, bg: CBG[allCards.length % CBG.length], estimated: true });
-  }
 
   compSection = document.getElementById('compSection');
   compSection.innerHTML = '<div class="comp-label">📍 Biens comparables dans le quartier</div><div class="comp-sub">Distances par rapport au bien analysé.</div>';
